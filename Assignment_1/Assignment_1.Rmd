@@ -1,0 +1,42 @@
+---
+title: "Assignment_1"
+author: "wliu16"
+date: "2022-09-15"
+output: html_document
+---
+
+```{r} 
+setwd("~/Desktop/R/64060/Assignment_1")
+health_data <- read.table("500_Person_Gender_Height_Weight_Index.csv", TRUE, ",")
+str(health_data)
+summary(health_data)
+head(health_data)
+hist(health_data$Height, col = 'red')
+```
+Comments: There are over 50 individuals between 180-190cm in height which is the most popular height group in this dataset
+
+```{r}
+Height_M <- health_data$Height/100
+BMI <- health_data$Weight/(Height_M^2)
+head(BMI)
+```
+Comments: convert the height to meters, calculate and print first 6 rows of BMI
+
+```{r}
+par(mfrow = c(1,2))
+counts_h <- table(health_data$Height)
+counts_w <- table(health_data$Weight)
+barplot(counts_h, main = "Height Distribution", xlab= "Height(cm)")
+barplot(counts_w, main = "Weight Distribution", xlab= "Weight(kg)")
+```
+
+Comments: plots two bargraphs on the distribution of height and weight. We can see most height is more concentrated towards 180-190cm while weight is more spread out evenly between 50-150 kg.
+
+```{r}
+par(mfrow = c(1,2))
+plot(health_data$Weight, health_data$Height, main = "Height vs Weight",
+     xlab = "Weight", ylab= "Height", pch=19)
+plot(health_data$Weight, BMI, main = "BMI vs Weight",
+     xlab = "Weight", ylab= "BMI",pch =18)
+```
+Comments: There is no obvious correlation between height and weight but BMI is positively correlated with weight. The greater the weight is, the higher BMI is. 
