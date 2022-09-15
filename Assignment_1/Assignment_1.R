@@ -3,6 +3,7 @@
 # 2- normal, 3-overweight, 4- obesity, 5- extreme obesity
 # set working directory
 setwd("~/Desktop/R/64060/Assignment_1")
+library(tidyverse)
 
 # load the file 
 health_data <- read.table("500_Person_Gender_Height_Weight_Index.csv", TRUE, ",")
@@ -15,6 +16,16 @@ summary(health_data)
 
 # print out 6 row of the total data
 head(health_data)
+
+# count the number of individuals with various fitness levels
+table(health_data$Index)
+
+# rearrange the table based on Height column in ascending order 
+health_data_arrange1 <- health_data %>% arrange(Height)
+View(health_data_arrange1)
+
+health_data_filter1<- health_data %>% filter(Index == 3)
+View(health_data_filter1)
 
 # convert the Height(cm) to meter
 Height_M <- health_data$Height/100
