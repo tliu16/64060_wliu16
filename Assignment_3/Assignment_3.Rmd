@@ -1,0 +1,107 @@
+---
+title: "**Assignment 3 Naive Bayes**"
+author: "wliu16"
+date: "2022-10-19"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+dir.create("images")
+```
+
+```{r, include= FALSE}
+#load the data and observe the data
+rm(list=ls())
+setwd("/Users/tammyliu/Desktop/R/64060-003/Assignment_3")
+bank.df <- read.csv("UniversalBank.csv")
+```
+
+```{r, include=FALSE}
+library(caret)
+library(dplyr)
+library(reshape2) #melting and casting
+library(reshape)
+library(gmodels)
+library(pROC)
+library(e1071)
+```
+
+
+```{r}
+#select, rename and clean the data
+bank_data <- bank.df[, c(10, 13, 14)]
+bank_data$Online <- as.factor(bank_data$Online)
+bank_data$CC <- as.factor(bank_data$CreditCard)
+bank_data$Loan <- as.factor(bank_data$Personal.Loan)
+bank_data <- bank_data[, c(-1, -3)]
+
+#Data partition with training: validation = 6:4
+set.seed(123)
+index_train <- createDataPartition(bank_data$Loan, 
+                                   p = 0.6,
+                                   list = FALSE)
+train_data <- bank_data[index_train, ]
+validate_data <- bank_data[-index_train, ]
+
+```
+
+A. Pivot table of Online, CC and Loan for training data
+```{r}
+#molted <- melt(train_data, id = c("Online"))
+#tibble(molted)
+#x.cast <- dcast(molted, Online~variable, fun.aggregate = length)
+#x.cast
+```
+```{r}
+xtab <- ftable(xtabs(~CC+Loan+Online, data = train_data))
+xtab
+```
+
+B. P(Loan=1 | CC=1, Online=1) = 51/(467+51) = 9.85%
+
+C. Create two separate pivot tables
+```{r}
+melt.x1 <- melt(train_data, id = "Loan", variable = "Online")
+cast.x1 <- dcast(melt.x1, Loan~Online, fun.aggregate = length)
+cast.x1
+
+ftable(train_data[, c(3,1)]) #Loan as row vs Online as column
+ftable(train_data[, c(3,2)]) #Loan as row vs CC as column
+```
+
+D. Compute P(A | B)
+```{r}
+ftable(train_data[, c(2,3)]) #CC | Loan
+ftable(train_data[, c(1,3)]) #Online | Loan
+ftable(train_data[, 3]) #Loan distribution 
+```
+
+i. P(CC = 1 | Loan =1) = 84/(204+84) = 0.2917
+ii. P(Online =1 | Loan =1) = 176/(176+112) = 0.6111
+iii. P(Loan =1) = 288/(288+2712) = 0.096
+iv. P(CC=1| Loan =0) = 777/(1935+777) = 0.2865
+v. P(Online =1 | Loan =0) = 1611/(1611+1101) = 0.5940
+vi. P(Loan = 0) = 2712/(2712+288) = 0.904
+
+E. Naive Bayes probability
+P(Loan =1 | CC=1, Online =1) = 
+P(CC = 1 | Loan =1)*P(Online =1|Loan =1)*P(Loan =1)/
+(P(CC = 1 | Loan =1)*P(Online =1|Loan =1)*P(Loan =1)+
+P(CC=1| Loan =0)*P(Online =1 | Loan =0)*P(Loan = 0))=
+0.2971*0.6111*0.096/(0.2971*0.6111*0.096+0.2865*0.5940*0.904)= 0.1018 =10.18%
+
+F. Naive Bayes result of 10.18% is higher than pivot table calculation of 9.84%
+
+G. Run NB
+```{r}
+result <- naiveBayes(Loan~Online+CC, data = train_data)
+result
+
+```
+The entries needed for NB calculation: 
+P(loan) 0.904 and 0.096
+P(Loan =0 | Online =1) = 0.5940
+P(Loan =1 | Online =1) = 0.6111
+P(Loan =0 | CC =1) = 0.2865
+P(Loan =1 | CC =1) = 0.2917
