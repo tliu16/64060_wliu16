@@ -1,0 +1,205 @@
+---
+title: "Assignment_4"
+author: "wliu16"
+date: "2022-10-31"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/tammyliu/Desktop/R/64060-003/Assignment_4")
+pharma <- read.csv("Pharmaceuticals.csv")
+library(tidyverse)
+library(factoextra)
+library(ISLR)
+library(flexclust)
+library(caret)
+```
+
+**a. Use only the numerical variables (1 to 9) to cluster the 21 firms. 
+Justify the various choices made in conducting the cluster analysis, such as 
+weights for different variables, the specific clustering algorithm(s) used, the 
+number of clusters formed, and so on.**<br>  
+ 
+In the pharma problem, we use k-means algorithm to cluster the 21 firms into 5 
+clusters with no varying weights. We choose k=5 because it is the optimal k 
+suggested by the silhouette method. <br>  
+
+```{r}
+set.seed(123)
+#scaling the dataframe (z-score)
+ph_scaled <- scale(pharma[,3:11])
+summary(ph_scaled)
+
+#scaling the dataframe (range)
+ph_range <- scale(pharma[,3:11])
+#summary(ph_range), save for later
+```
+
+```{r}
+set.seed(123)
+distance <- get_dist(ph_scaled)
+fviz_dist(distance) #visualize distance between rows of the matrix
+
+k1 <- kmeans(ph_scaled, centers = 5, nstart = 25)
+fviz_cluster(k1, data = ph_scaled)
+print(k1)
+```
+<br>  
+**b. Interpret the clusters with respect to the numerical variables used in 
+forming the clusters.**<br>  
+
+**Comments** The summary data gives us an overview of the 21 points in 9 numeric 
+columns. Centroid points show the 5 centroid locations and each cluster has a 
+size of 8, 3, 2, 4, 4. <br>  
+The distance graph shows the distance between rows of the matrix. The darker purple
+shows the distance is the most and the red shows distance is 0 between same points.
+<br>  
+Cluster 1 contains 8 companies including 1, 3, 4, 7, 10, 16, 19, 21<br>  
+Cluster 2 contains 3 companies including 6, 8, 12<br>  
+Cluster 3 contains 2 companies including 2, 18 <br>  
+Cluster 4 contains 4 companies including 11, 13, 15, 17<br>  
+Cluster 5 contains 4 companies including 5, 9, 14, 20<br>  
+<br>  
+
+```{r}
+fviz_nbclust(ph_scaled, kmeans, method = "wss")
+```
+<br>  
+**Comments** We don't see a clear elbow from the graph and it is quite ambiguous.
+The graph does not show the elbow/knee position and it flattens out more than 
+once at k =4 and 6 respectively.
+
+```{r}
+fviz_nbclust(ph_scaled, kmeans, method = "silhouette")
+```
+<br>  
+**Comments** It is clear from the silhouette that 5 is the optimal cluster 
+answer.<br>  
+
+
+**c. Is there a pattern in the clusters with respect to the numerical variables 
+(10 to 12)? (those not used in forming the clusters)**<br>  
+
+```{r}
+#let's look at the mean value from actual data by clusters
+aggregate(pharma[3:11], by=list(cluster=k1$cluster), mean) 
+dd <- cbind(pharma, cluster = k1$cluster)
+#tibble(dd)
+```
+```{r}
+#Here's a more detailed quantitative breakdown by cluster
+by(dd, factor(dd$cluster), summary)
+```
+
+```{r}
+#Median recommendation by cluster
+table_rec <- table(dd$cluster, dd$Median_Recommendation)
+names(dimnames(table_rec)) <- c("Cluster", "Recommendation")
+table_rec <- addmargins(table_rec)
+table_rec
+```
+<br>  
+**Comments** From the results, we can't determine a clear cut relationship between
+cluster~Median_Recommendation. A total of 21 recommendation is split into 
+1 strong buy, 7 moderate buy, 9 hold and 4 moderate sell.<br>  
+
+Cluster 1 has a mix of all four recommendations which includes opposite rec on
+buy and sells. Cluster 2, 3 and 4 contain only mod. buy and hold information. 
+Cluster 5 has both moderate buy and moderate sell recommendation. 
+```{r}
+#Location breakdown by cluster
+table_loc <- table(dd$cluster, dd$Location)
+names(dimnames(table_loc)) <- c("Cluster", "Location")
+table_loc <- addmargins(table_loc)
+table_loc
+```
+<br>  
+**Comments** From the results, we can't determine any relationship between
+cluster~Location. A total of 21 companies is split into 13 US, 3 UK and 1 for 
+Canana, France, Germany, Ireland and Switzerland each.<br>  
+
+Cluster 1 has a mix of US, UK, Switzerland. Cluster 2 has US and Germany. Cluster
+3 has US and Canada. Cluster 4 contains US and UK. Cluster 5 has US, France and 
+Ireland. 
+```{r}
+#Exchange breakdown by cluster
+table_ex <- table(dd$cluster, dd$Exchange)
+names(dimnames(table_ex)) <- c("Cluster", "Exchange")
+table_ex <- addmargins(table_ex)
+table_ex
+```
+<br>  
+**Comments** From the results, we can't determine any relationship between
+cluster~Exchange. A total of 21 companies is split into 1 Amex, 1 Nasdaq, and
+19 NYSE.<br>  
+
+Cluster 1 has only NYSE. Cluster 2 has all three. Cluster 3 is only NYSE. 
+Cluster 4 is only NYSE. Cluster 5 is only NYSE. Basically all clusters except 
+cluster 2 is listed in NYSE exclusively <br>  
+<br>  
+
+**d. Provide an appropriate name for each cluster using any or all of the variables
+in the dataset.**<br>  
+
+Cluster 1: Low_Revenue_Growth- Mix Recommendation- Mostly US comps- All NYSE<br>  
+
+Cluster 2: Small Market Cap- Low RoA - Hold or Buy - US comps - Mix exchanges<br>  
+
+Cluster 3: Low Net_Profit_Margin-High PE ratio- Hold or Buy - NAM comps - NYSE<br>  
+
+Cluster 4: High Market Cap - High RoE - High RoA- High Asset Turnover- 
+High NetProfitMargin - Hold or Buy- US comps - NYSE<br>  
+
+Cluster 5: Low PE ratio-Low RoE-Low Asset Turnover- High revenue growth - 
+mix recommendation - US or European - NYSE<br>  
+
+<br>  
+<br>  
+Exploring the alternatives:<br>  
+
+```{r}
+fviz_nbclust(ph_range, FUN = kmeans, method = "silhouette")
+fviz_nbclust(ph_range, kmeans, method = "wss")
+```
+<br>  
+We also run test exploring the optimal k through range normalization. The optimal
+k is 2 from silhouette and 6 from elbow (not clear). Since the k from range 
+normalization is not as ideal, we will stay with z-score normailization data.
+
+```{r}
+set.seed(111)
+k2 = kcca(ph_scaled, k=5, kccaFamily("kmeans"))
+k2
+clusters(k2) #cluster membership
+
+#Apply the predict() function
+clusters_index <- predict(k2)
+image(k2)
+points(ph_scaled, col=clusters_index, pch=19, cex=1.0)
+```
+ 
+<br>  
+Here we use kcca algorithm instead of kmeans from base R to run kmeans cluster
+on k =5. The clustering has the same size but different assignment between points
+compared to base R method. The clustering graph shows the clustering isn't 
+clean cut as we want esp between cluster 1, 3 and 5. 
+
+```{r}
+set.seed(111)
+k2 = kcca(ph_scaled, k=5, kccaFamily("kmedians"))
+k2
+clusters(k2) #cluster membership
+
+#Apply the predict() function
+clusters_index <- predict(k2)
+image(k2)
+points(ph_scaled, col=clusters_index, pch=19, cex=1.0)
+```
+<br>  
+If we switch to kmedian from kmeans in kcca, the size of the five clusters are 
+2, 2, 7, 4, 6. Still, the clustering isn't as clean cut. We are exploaring the 
+additional to see if there are better methods or k we can use to improve the 
+visual cluster but it is not clear that a better cluster exists. 
+
+
