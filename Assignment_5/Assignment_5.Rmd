@@ -1,0 +1,142 @@
+---
+title: "Assignment_5"
+author: "wliu16"
+date: "2022-12-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(cluster)
+library(factoextra)
+library(stats)
+library(corrplot)
+library(fpc)
+```
+
+**Data preprocess**
+```{r}
+cereal <- read.csv("Cereals.csv")
+cereal <- na.omit(cereal) # 3 NA records removed, 74 records in total
+summary(cereal) #original data summary
+head(cereal)  #original data snapshot
+
+corrmatrix <- cor(cereal[, 4:16])
+corrplot(corrmatrix, method = 'number')
+
+#data scaling 
+df <- cereal[, 4:16]
+df_scaled<- scale(df)
+rownames(df_scaled) <- cereal[, 1] #create new dataframe with only numerical data
+```
+<br>  
+Early observations on the univariate data: <br>  there might be outliers on high
+or low ends <br>  
+protein: outliers on max<br>  
+fat: outliers on max<br>  
+sodium: outliers on min<br>  
+fiber: outliers on max<br>  
+potass: outliers on max<br>  
+vitamins: outliers on max<br>  
+rating: vitamins: outliers on max<br>  
+<br>  
+**Hierarchical clustering**
+```{r}
+d <- dist(df_scaled, method = "euclidean")
+hc1 <- agnes(d, method = "complete")
+hc2 <- agnes(d, method = "single")
+hc3 <- agnes(d, method = "average")
+hc4 <- agnes(d, method = "ward")
+
+print(hc1$ac)
+print(hc2$ac)
+print(hc3$ac)
+print(hc4$ac)
+```
+```{r}
+pltree(hc4, cex = 0.6, hang = -1, main = "Dendrogram of agnes ward method")
+rect.hclust(hc4, k = 5, border = 1:5)
+```
+```{r}
+#comparison between complete and ward using hclust 
+hc_comp <- hclust(d, method = "complete")
+hc_w <- hclust(d, method = "ward.D")
+plot(hc_comp, cex = 0.6, hang = -1) #complete 
+plot(hc_w, cex = 0.6, hang = -1) #ward
+```
+
+<br>  
+**Conclusion**<br>  
+(1) The best method is ward method as the agglomerative coefficient is max 
+among the four methods. Complete method is also a good alternative. 
+
+If we use hclust to plot, complete and ward both show clean plots. Complete shows
+5 clusters and ward shows 4. For this practice, we will go with ward method as 
+the best method. <br>  
+
+(2) I would choose 5 as the **number of clusters**. This is based on visual 
+examination to the ward method and complete method. <br>  
+
+```{r}
+#test plot of Euclidean distance vs no of clusters optimal no of clusters
+
+```
+
+
+**Check on stability of clusters**
+```{r}
+set.seed(111)
+
+train_index_c <- createDataPartition(df$rating, p= 0.6, list = FALSE)
+validate_c <- df[- train_index_c, ]  # 40% as validation
+train_c <- df[train_index_c, ] # 60% as training and testing
+
+validate_c <- scale(validate_c)
+train_c <- scale(train_c)
+
+```
+
+
+```{r}
+d2 <- dist(train_c, method = "euclidean")
+d3 <- dist(validate_c, method = "euclidean")
+
+hc_ward_train <- agnes(d2, method = "ward")
+hc_ward_validate <- agnes(d3, method = "ward")
+
+```
+
+```{r}
+k_t <- kmeans (d2, centers = 5, nstart = 25)
+k_t$centers
+fviz_cluster(k_t, data = d2)
+```
+```{r}
+k_v <- kmeans (d3, centers = 5, nstart = 25)
+k_v$centers
+fviz_cluster(k_v, data = d3)
+```
+
+```{r}
+fviz_nbclust(df_scaled, kmeans, method='silhouette')
+fviz_nbclust(df, kmeans, method = "wss")
+# k = 3 and k = 8 are suggested
+```
+
+
+
+**Recommendation to Elementary school**
+Should the data be normalized? <br>  
+The data should not be normalized as we need to use units to filter healthy cereal. 
+
+The standard for healthy cereal should be full of nutrients (fiber) compared
+to other cereals which are simply tasty. Vitamins and minerals are
+also something nice to have. According to the official guideline from FDA, 
+cereals have to contain three-fourth ounces of whole grains and no more than 
+1 gram of saturated fat, 230 milligrams of sodium and 2.5 grams of added sugars 
+in order to be considered as healthy. <br>  
+Reference: https://www.cnbc.com/2022/10/11/fda-redefined-healthy-these-7-cereals-do-not-qualify.html
+
+
