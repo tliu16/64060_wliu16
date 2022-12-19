@@ -1,0 +1,259 @@
+---
+title: "Covid-19 Death Investigation"
+author: "wliu16"
+date: "2022-12-14"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(ROCR)
+library(ggplot2)
+library(pROC)
+library(rpart)
+library(rpart.plot)
+library(cutpointr)
+library(ROSE)
+```
+
+```{r}
+setwd("~/Desktop/R/64060-003/Final_Exam")  #set working directory
+Covid <- read.csv("Covid Data.csv")  #load the data
+summary(Covid) 
+```
+
+**Data Preparation**<br>  
+
+```{r}
+#Since all the boolean in the dataset uses 1("Yes") and 2("No"), convert rest of the columns
+
+#Convert non-Death cases to NA
+Covid$DATE_DIED <- as.Date(Covid$DATE_DIED)
+#Convert values of 97, 98 and 99 to NAs in all binary columns 
+Covid <- Covid %>% na_if(97) %>% na_if(98) %>% na_if(99)
+
+#Convert classification from 1-7 to binary 1("Yes") and 2("No")
+Covid <- Covid%>%
+  mutate(CLASSIFICATION = ifelse(CLASIFFICATION_FINAL<=3, 1 , 2))%>%
+  filter(CLASSIFICATION == 1) #keep only covid-positive cases
+  
+#Convert death from date to binary 1("Yes") and 2("No")
+Covid <- Covid%>%
+  mutate(DEATH = ifelse(is.na(DATE_DIED), 2, 1))
+
+#391979 obs of 23 variables
+```
+
+**Data Exploration**
+```{r}
+xtabs(~DEATH, data = Covid)
+xtabs(~DEATH+SEX, data = Covid) #death and covid distribution by sex
+xtabs(~DEATH+PREGNANT, data = Covid) #death and covid distribution by PREGNANCY
+```
+
+**Comment**<br>  
+Early observations for death and covid cases: <br>  
+1) Male (sex =2) death rate is higher than female whether is covid positive or not<br>  
+2) Since prenant women is only a small portion of female (1.55%) and our study
+is not focused on pregnant women, let's delete pregnant variable for the study
+3) We can't impute the 345 NA records for age. Let's remove it since it is a 
+small portion. <br>  
+4) Let's also remove USMER, MEDICAL_UNIT. Not important where patients receive care<br>  
+5) INTUBED and ICU still have high ratio of NAs. Assumne only severe cases need
+those procedures, it's ok to replace those NA with median which is 2("no") <br>  
+6) The rest of NAs usually count than less than 1% of column data so let's impute 
+the NAs by median number<br>  
+
+<br>  
+
+**Data Preparation**<br>  
+
+```{r}
+Covid <- Covid[-c(3, 6, 17, 18, 21, 22)] #delete pregnant, USMER, MEDICAL_UNIT etc
+#391979 obs. of  17 variables
+Covid <- Covid%>%
+  filter(!is.na(AGE))  #391853 obs. of  17 variables
+
+#impute missing values with mean
+Covid[, c(4:16)] <- Covid[, c(4:16)]%>%
+    mutate_if(is.numeric, function(x) ifelse(is.na(x), median(x, na.rm = T), x))
+
+#Change data attribute from character to factor, the data is coded as 1 as no and 2 as yes
+Covid$DEATH <- as.factor(Covid$DEATH) 
+```
+
+**Data partition**
+```{r}
+#Partition the given training data into 70% training data and 30% testing data
+set.seed(100)
+index_train <- createDataPartition(Covid$DEATH, p=0.7, list= F)
+Covid_train <- Covid[index_train, ]
+Covid_test <- Covid[-index_train, ]
+```
+<br>  
+
+**Run logistic regression model**
+```{r}
+set.seed(1)
+log_model <- glm(DEATH~., data = Covid_train, family = 'binomial')
+log_model
+```
+**Comment**<br>  
+Factors will increase the chance of death: <br>  
+SEX(male), AGE (high), PATIENT TYPE (hospitalized), PNEUMONIA (positive), 
+DIABETES (positive), COPD (negative), ASTHMA (negative), INMSUPR (positive),
+HIPERTENSION (positive), CARDIOVASCULAR (negative), RENAL_CHRONIC (positive), 
+OTHER_DISEASE (positive), OBESITY (positive), TOBACCO(negative), INTUBED (positive),
+ICU(negative)
+
+<br>  
+
+**Run knn model**
+```{r, include=FALSE}
+#set.seed(2)
+#knn_model <- train(data = Covid_train, DEATH~., method = "knn", metric = "Accuracy", 
+      #tuneGrid = expand.grid(k=c(1, 5, 7)), preProcess = c("center", "scale"))
+#knn_model
+```
+**Comment**<br>  
+KNN model failed since there are too many ties and KNN can't deal with ties. This 
+means that there are many similar data points which have the same distance.
+<br>  
+
+**Run NB model**
+```{r, include = FALSE}
+library(e1071)
+set.seed(3)
+nb_model <- naiveBayes(DEATH~., data = Covid_train)
+nb_model
+```
+<br>  
+
+**Run Decision Tree**
+```{r}
+set.seed(4)
+#agnes or hclust object does not work with later prediction
+dt_model <- rpart(DEATH~., data = Covid_train, method = "class") #class for binary
+rpart.plot(dt_model, extra = 110, main = "Dendrogram of rpart") 
+```
+
+**Model Testing**
+```{r}
+#Test the logistic regression model and return in probability
+log_test_prob <- predict(log_model, Covid_test, type = "response")
+
+#Test the knn model
+#knn_test_prob <- predict(knn_model, Covid_test, type = "prob")
+
+#Test the nb model
+nb_test_prob <- predict(nb_model, Covid_test, type = "raw")
+
+#Test the dt model- (predict does not apply to "hclust" or "agnes" object)
+dt_test_prob <- predict(dt_model, Covid_test, type = "prob")
+```
+<br>  
+<br>  
+
+**Model Comparison: Thresholding, best cutoff point, confusion table and ROC**
+```{r}
+#logistic regression 
+pred_log_test <- prediction(log_test_prob, Covid_test$DEATH)#create prediction obj
+
+#TPR FPR plot
+roc_perf_log_test <- performance(pred_log_test, measure = "tpr", x.measure = "fpr")
+plot(roc_perf_log_test,colorize=TRUE,print.cutoffs.at=seq(0.1,by=0.1)) 
+#TPR/FPR cutoff graph<br>  
+```
+
+```{r}
+#Logistic regression AUC value
+auc.perf = performance(pred_log_test, measure = "auc")
+auc.perf@y.values
+```
+
+```{r}
+#Confusion table
+confusionMatrix(as.factor(ifelse(log_test_prob>0.1, "1", "2")), Covid_test$DEATH, positive = "1")
+```
+<br>  
+
+**Logistic Regression Metric**<br>  
+True Positive (TP) = 13442 <br>  
+True Negative (TN) = 264 <br>  
+False Positive (FP) = 101037 <br>  
+False Negative (FN) = 2812 <br>  
+Miscalculations = 103849 <br>  
+Accuracy = 11.66% <br>  
+Sensitivity = 82.70% <br>  
+Specificity = 0.26% <br>  
+<br>  
+<br>  
+
+```{r}
+#Naive Bayes 
+pred_nb_test <- prediction(nb_test_prob[,1], Covid_test$DEATH)
+roc_perf_nb_test <- performance(pred_nb_test, measure = "tpr", x.measure = "fpr")
+plot(roc_perf_nb_test,colorize=TRUE,print.cutoffs.at=seq(0.1,by=0.1))
+```
+<br>  
+```{r}
+#Calculate ROC value for binary classifier
+roc.curve(Covid_test$DEATH, nb_test_prob[,1], plotit= F)
+```
+
+```{r}
+confusionMatrix(as.factor(ifelse(nb_test_prob[,1]>0.01, "1", "2")), Covid_test$DEATH, positive = "1")
+```
+<br>  
+<br>  
+**Naive Bayes Metric**<br>  
+True Positive (TP) = 13857 <br>  
+True Negative (TN) = 85337 <br>  
+False Positive (FP) = 15964 <br>  
+False Negative (FN) = 2397 <br>  
+Miscalculations = 18361 <br>  
+Accuracy = 84.38% <br>  
+Sensitivity = 85.25% <br>  
+Specificity = 84.24% <br>  
+<br>  
+
+
+```{r}
+#decision tree (dt): create prediction object for ROCR evaluation 
+pred_dt_test <- prediction(dt_test_prob[,1], Covid_test$DEATH)
+roc_perf_dt_test <- performance(pred_dt_test, measure = "tpr", x.measure = "fpr")
+plot(roc_perf_nb_test,colorize=TRUE,print.cutoffs.at=seq(0.1,by=0.1))
+```
+
+```{r}
+#Calculate ROC value for binary classifier
+roc.curve(Covid_test$DEATH, dt_test_prob[,1], plotit= F)
+```
+
+```{r}
+confusionMatrix(as.factor(ifelse(dt_test_prob[,1]>0.2, "1", "2")), Covid_test$DEATH, positive = "1")
+```
+<br>  
+<br>  
+
+**Decision Tree Metric**<br>  
+True Positive (TP) = 14752 <br>  
+True Negative (TN) = 82584 <br>  
+False Positive (FP) = 18717 <br>  
+False Negative (FN) = 1502 <br>  
+Miscalculations = 20219 <br>  
+Accuracy = 82.8% <br>  
+Sensitivity = 90.76% <br> 
+Specificity = 81.52% <br>  
+<br>  
+<br>  
+
+**Conclusion**<br>  
+The model aims to reduce false negatives and tolerates more on false positives. 
+It will cost more to miss a covid positive patient than to mis-classify a negative
+one. <br>  
+The next step is to discover the cost for false positive and false negative patient
+to adjust the model to save the total cost. 
